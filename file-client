@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+import json
+
+import rest_api
+
+
+parser = argparse.ArgumentParser(prog='file-client')
+parser.add_argument('--backend', choices=['grpc', 'rest'], default='grpc')
+parser.add_argument('--grpc-server', default='localhost:50051')
+parser.add_argument('--base-url', default='http://localhost/')
+parser.add_argument('--cert-file')
+parser.add_argument('--output')
+
+parser.add_argument('subcommand', choices=['stat', 'read'])
+parser.add_argument('UUID')
+
+args = parser.parse_args()
+
+if args.backend == 'grpc':
+    print('gRPC not implemented')
+    sys.exit(1)
+elif args.backend == 'rest':
+    stat = rest_api.stat
+    read = rest_api.read
+else:
+    print('unrecognized option')
+    sys.exit(1)
+
+binary_output = False
+if args.subcommand == 'stat':
+    data = stat(args.base_url, args.UUID)
+    data = json.dumps(data, indent=4)
+elif args.subcommand == 'read':
+    data = read(args.base_url, args.UUID)
+    binary_output = True
+else:
+    print('unrecognized subcommand')
+    sys.exit(1)
+
+if args.output:
+    file_mode = 'wb' if binary_output else 'w'
+    with open(args.output, file_mode) as output_file:
+        output_file.write(data)
+else:
+    if binary_output:
+        sys.stdout.buffer.write(data)
+    else:
+        print(data)
