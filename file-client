@@ -4,48 +4,60 @@ import argparse
 import sys
 import json
 
-import rest_api
+from clients.rest_client import RestClient
 
 
-parser = argparse.ArgumentParser(prog='file-client')
-parser.add_argument('--backend', choices=['grpc', 'rest'], default='grpc')
-parser.add_argument('--grpc-server', default='localhost:50051')
-parser.add_argument('--base-url', default='http://localhost/')
-parser.add_argument('--cert-file')
-parser.add_argument('--output')
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(prog='file-client')
+    parser.add_argument('--backend', choices=['grpc', 'rest'], default='grpc',
+                        help='Set a backend to be used, choices are grpc and rest. Default is grpc.')
+    parser.add_argument('--grpc-server', default='localhost:50051',
+                        help='Set a host and port of the gRPC server. Default is localhost:50051.')
+    parser.add_argument('--base-url', default='http://localhost/',
+                        help='Set a base URL for a REST server. Default is http://localhost/.')
+    parser.add_argument('--cert-file', help='Set a path to a SSL certificate file.')
+    parser.add_argument('--output', help='Set the file where to store the output. Default is -, i.e. the stdout.')
 
-parser.add_argument('subcommand', choices=['stat', 'read'])
-parser.add_argument('UUID')
+    parser.add_argument('subcommand', choices=['stat', 'read'],
+                        help="'stat' prints the file metadata in a human-readable manner\n'read' outputs the file content")
+    parser.add_argument('UUID')
 
-args = parser.parse_args()
+    return parser.parse_args()
 
-if args.backend == 'grpc':
-    print('gRPC not implemented')
-    sys.exit(1)
-elif args.backend == 'rest':
-    stat = rest_api.stat
-    read = rest_api.read
-else:
-    print('unrecognized option')
-    sys.exit(1)
 
-binary_output = False
-if args.subcommand == 'stat':
-    data = stat(args.base_url, args.UUID)
-    data = json.dumps(data, indent=4)
-elif args.subcommand == 'read':
-    data = read(args.base_url, args.UUID)
-    binary_output = True
-else:
-    print('unrecognized subcommand')
-    sys.exit(1)
+def main():
+    args = parse_args()
 
-if args.output:
-    file_mode = 'wb' if binary_output else 'w'
-    with open(args.output, file_mode) as output_file:
-        output_file.write(data)
-else:
-    if binary_output:
-        sys.stdout.buffer.write(data)
+    if args.backend == 'grpc':
+        print('gRPC not implemented')
+        sys.exit(1)
+    elif args.backend == 'rest':
+        client = RestClient(args.base_url, args.cert_file)
     else:
-        print(data)
+        print('unrecognized option')
+        sys.exit(1)
+
+    binary_output = False
+    if args.subcommand == 'stat':
+        data = client.stat(args.UUID)
+        data = json.dumps(data, indent=4)
+    elif args.subcommand == 'read':
+        data = client.read(args.UUID)
+        binary_output = True
+    else:
+        print('unrecognized subcommand')
+        sys.exit(1)
+
+    if args.output:
+        file_mode = 'wb' if binary_output else 'w'
+        with open(args.output, file_mode) as output_file:
+            output_file.write(data)
+    else:
+        if binary_output:
+            sys.stdout.buffer.write(data)
+        else:
+            print(data)
+
+
+if __name__ == '__main__':
+    main()
