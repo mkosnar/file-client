@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
-import sys
 import json
+import sys
 
+from google.rpc import code_pb2
+from grpc import RpcError
+from grpc_status import rpc_status
 from requests.exceptions import HTTPError
 
+from clients.grpc_client import GrpcClient
 from clients.rest_client import RestClient
 
 
@@ -30,26 +34,27 @@ def parse_args() -> argparse.Namespace:
 def main():
     args = parse_args()
 
+    # choose a client based on --backend option
     if args.backend == 'grpc':
-        print('gRPC not implemented')
-        sys.exit(1)
+        client = GrpcClient(args.grpc_server, args.cert_file)
     elif args.backend == 'rest':
         client = RestClient(args.base_url, args.cert_file)
     else:
-        print('unrecognized option')
+        print('Unrecognized backend option')
         sys.exit(1)
 
-    binary_output = False
+    # run client method corresponding to subcommand
     if args.subcommand == 'stat':
         data = client.stat(args.UUID)
         data = json.dumps(data, indent=4)
     elif args.subcommand == 'read':
         data = client.read(args.UUID)
-        binary_output = True
     else:
-        print('unrecognized subcommand')
+        print('Unrecognized subcommand')
         sys.exit(1)
 
+    # write data to given output
+    binary_output = isinstance(data, bytes)
     if args.output:
         file_mode = 'wb' if binary_output else 'w'
         with open(args.output, file_mode) as output_file:
@@ -64,12 +69,30 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except HTTPError as he:
-        if he.response.status_code == 404:
-            print('file not found')
+
+    # unsuccessful HTTP status codes
+    except HTTPError as httpe:
+        if httpe.response.status_code == 404:
+            print(f'File UUID not found.')
         else:
-            print(f'unable to retrieve data due to: {he}')
+            print(f'Command failed due to HTTP error: {httpe}')
         sys.exit(1)
+
+    # gRPC exceptions
+    except RpcError as rpce:
+        # try to get status code
+        try:
+            status = rpc_status.from_call(rpce.exception)
+        except Exception:
+            pass
+        else:
+            if status.code == code_pb2.NOT_FOUND:
+                print(f'File UUID not found.')
+                sys.exit(1)
+
+        print(f'Command failed due to gRPC error: {rpce}')
+        sys.exit(1)
+
     except Exception as e:
-        print(f'unable to retrieve data due to: {e}')
+        print(f'Command failed due to unexpected error: {e!r}')
         sys.exit(1)
